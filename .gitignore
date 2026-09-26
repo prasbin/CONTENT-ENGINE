@@ -1,0 +1,62 @@
+# --- Secrets / local config (NEVER commit) ---
+.env
+.env.*
+!.env.example
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# --- Databases / runtime data ---
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+# --- Generated & source media (never commit) ---
+*.mp4
+*.mov
+*.mkv
+*.webm
+*.avi
+*.m4v
+*.mp3
+*.m4a
+*.wav
+*.aac
+*.srt
+
+# --- AI model files ---
+*.gguf
+*.onnx
+models/
+
+# --- Node / frontend ---
+node_modules/
+dist/
+.vite/
+
+# --- Mobile / Android build outputs ---
+*.apk
+*.aab
+*.keystore
+*.jks
+mobile/android/.gradle/
+mobile/android/app/build/
+mobile/android/build/
+
+# --- Logs ---
+*.log
+logs/
+
+# --- IDE / OS ---
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
