@@ -6,6 +6,7 @@ from app.db.session import (
     create_engine_from_url,
     create_session_factory,
     init_db,
+    normalize_database_url,
     session_scope,
 )
 
@@ -15,5 +16,6 @@ __all__ = [
     "create_engine_from_url",
     "create_session_factory",
     "init_db",
+    "normalize_database_url",
     "session_scope",
 ]

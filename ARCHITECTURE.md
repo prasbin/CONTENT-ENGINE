@@ -142,6 +142,11 @@ External boundaries that can be re-pointed without code changes:
 
 - All config from environment / `.env` (git-ignored); typed and
   validated by Pydantic; failures name the offending variable.
+- **Path anchoring**: `.env`, relative SQLite files, and relative
+  storage paths resolve against the repository root
+  (`app/core/paths.py`), never the process working directory — required
+  for predictable behavior under Linux service managers and for
+  identical Windows/Linux development.
 - Secrets never hard-coded; logs pass through a redaction filter
   (`token/password/secret/api_key/authorization/bearer` values masked).
 - Storage names reject absolute paths, drive letters, and `..` (path

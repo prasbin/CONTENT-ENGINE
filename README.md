@@ -13,18 +13,26 @@ server, never inside the APK. The laptop is only for development.
 
 | Phase | Scope | Status |
 |-------|-------|--------|
-| 0 | Environment audit, Git safety, recovery docs | **DONE** (verified this run) |
-| 1 | Backend foundation: FastAPI, config, DB, jobs, health, auth, storage, providers, tests | **DONE** (verified this run) |
+| 0 | Environment audit, Git safety, recovery docs | **DONE** (re-verified this run) |
+| 1 | Backend foundation: FastAPI, config, DB, jobs, health, auth, storage, providers, tests | **DONE** (re-verified this run) |
 | 2+ | Download, transcription, AI, rendering, captions, publishing, deployment, APK | **NOT IMPLEMENTED** |
 
-Verified in this run:
+Repository: `https://github.com/prasbin/CONTENT-ENGINE.git` (branch
+`main`) — the disaster-recovery source of truth; see RECOVERY.md.
 
-- `python -m pytest -q` → **71 passed**
-- `python -m ruff check .` → **All checks passed**; `ruff format --check .` → 40 files formatted
-- Live server started (`uvicorn app.main:app`), `GET /health` returned
-  `status=ok, database=ok`; with `CE_API_TOKEN` set, `GET /api/v1/jobs`
-  returned **401** without a token and **200** with a valid token;
-  `POST /api/v1/jobs` created a real job.
+Verified in this run (2026-09-26 restart):
+
+- `python -m pytest -q` → **83 passed**
+- `python -m ruff check .` → **All checks passed**; `ruff format --check .` → 49 files formatted
+- `python scripts/init_db.py` → `Database initialized … Tables: jobs`
+- Live server started from the `backend/` working directory (proving
+  CWD-independent path resolution), `GET /health` →
+  `status=ok, database=ok`, database file created at the repository root
+
+Verified in the original Phase 1 run (2026-09-26): live server
+`GET /health` → `status=ok, database=ok`; with `CE_API_TOKEN` set,
+`GET /api/v1/jobs` returned **401** without a token and **200** with a
+valid token; `POST /api/v1/jobs` created a real job.
 
 Not verified (blocked/not applicable in this environment): Docker (not
 installed), FFmpeg (not installed), Ollama (not installed), cloud
@@ -46,16 +54,23 @@ pip install -r requirements-dev.txt   # runtime + test/lint deps
 # 1. configure (never commit .env)
 copy .env.example .env
 
-# 2. run the API (http://127.0.0.1:8000, docs at /docs)
+# 2. initialize the database (optional - also happens on first server start)
+python scripts/init_db.py
+
+# 3. run the API (http://127.0.0.1:8000, docs at /docs)
 .\scripts\dev.ps1
 # equivalent: python -m uvicorn app.main:app --app-dir backend --reload
 
-# 3. run tests
+# 4. run tests + lint
 .\scripts\test.ps1
 # equivalent: python -m pytest -q
 ```
 
 Linux/macOS: `./scripts/dev.sh`, `./scripts/test.sh`.
+
+Relative config/database/storage paths resolve against the repository
+root, so the server behaves identically regardless of the working
+directory it is started from.
 
 ## API (v1)
 
@@ -102,12 +117,12 @@ CONTENT ENGINE/
 ├── .gitignore            # secrets, data, media, build outputs excluded
 ├── README.md  ARCHITECTURE.md  ROADMAP.md  CHANGELOG.md  RECOVERY.md
 ├── requirements.txt  requirements-dev.txt  pyproject.toml
-├── scripts/              # dev.ps1, dev.sh, test.ps1, test.sh
+├── scripts/              # dev/test scripts + init_db.py (database init)
 └── backend/
     ├── app/
     │   ├── main.py       # FastAPI factory + lifespan (DB init)
     │   ├── api/          # deps (auth/DI), v1 routes (health, jobs)
-    │   ├── core/         # config, logging+redaction, errors, security
+    │   ├── core/         # config, paths, logging+redaction, errors, security
     │   ├── db/           # SQLAlchemy base + engine/session helpers
     │   ├── models/       # Job + JobStatus + transition rules
     │   ├── schemas/      # Pydantic request/response models
@@ -115,7 +130,7 @@ CONTENT ENGINE/
     │   ├── providers/    # pipeline interfaces + registry (DI)
     │   ├── storage/      # StorageProvider protocol + LocalStorage
     │   └── workers/      # documented placeholder (Phase 2+, DB-backed)
-    └── tests/            # 71 behavioral tests
+    └── tests/            # 83 behavioral tests
 ```
 
 ## Design highlights
@@ -129,6 +144,9 @@ CONTENT ENGINE/
   them.
 - **Infrastructure-agnostic**: no cloud provider hard-coded; SQLite now,
   any SQLAlchemy DB later; local storage now, remote object storage later.
+- **Working-directory independent**: `.env`, SQLite files, and storage
+  paths resolve against the repository root (tested), so Linux service
+  managers or odd CWDs cannot silently redirect data or miss config.
 - **No fake functionality**: only Phase 1 features exist. No download,
   transcription, rendering, or publishing code is present yet.
 

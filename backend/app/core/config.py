@@ -17,6 +17,8 @@ from typing import Annotated, Literal
 from pydantic import Field, ValidationError, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+from app.core.paths import default_env_file
+
 AppEnv = Literal["development", "testing", "staging", "production"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
@@ -39,7 +41,8 @@ class Settings(BaseSettings):
     """Typed, validated application settings loaded from the environment."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        # Absolute path: the project .env is found regardless of CWD.
+        env_file=default_env_file(),
         env_file_encoding="utf-8",
         extra="ignore",
         populate_by_name=True,

@@ -5,7 +5,12 @@ from __future__ import annotations
 import pytest
 from app.core.config import Settings
 from app.core.errors import InvalidTransitionError, NotFoundError
-from app.db.session import create_engine_from_url, create_session_factory, init_db
+from app.db.session import (
+    create_engine_from_url,
+    create_session_factory,
+    init_db,
+    normalize_database_url,
+)
 from app.models.job import (
     PIPELINE_ORDER,
     Job,
@@ -174,3 +179,33 @@ def test_database_urls_reject_empty() -> None:
 
 def test_jobs_table_named_correctly() -> None:
     assert Job.__tablename__ == "jobs"
+
+
+def test_normalize_database_url_anchors_relative_sqlite_paths(tmp_path, monkeypatch) -> None:
+    from app.core import paths as paths_module
+
+    monkeypatch.setattr(paths_module, "PROJECT_ROOT", tmp_path)
+
+    normalized = normalize_database_url("sqlite:///./data/x.db")
+    assert normalized == "sqlite:///" + (tmp_path / "data" / "x.db").as_posix()
+
+    # untouched cases
+    assert normalize_database_url("sqlite:///:memory:") == "sqlite:///:memory:"
+    assert normalize_database_url("sqlite:////abs/y.db") == "sqlite:////abs/y.db"
+    absolute = "sqlite:///" + (tmp_path / "z.db").as_posix()
+    assert normalize_database_url(absolute) == absolute
+    assert normalize_database_url("postgresql://user:pw@host/db") == "postgresql://user:pw@host/db"
+
+
+def test_relative_sqlite_engine_created_under_project_root(tmp_path, monkeypatch) -> None:
+    from app.core import paths as paths_module
+
+    monkeypatch.setattr(paths_module, "PROJECT_ROOT", tmp_path)
+    engine = create_engine_from_url("sqlite:///./rel_test.db")
+    try:
+        init_db(engine)
+        assert engine.url.database == (tmp_path / "rel_test.db").as_posix()
+        assert (tmp_path / "rel_test.db").is_file()
+        assert "jobs" in sa_inspect(engine).get_table_names()
+    finally:
+        engine.dispose()

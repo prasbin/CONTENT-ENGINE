@@ -1,7 +1,49 @@
 # CHANGELOG
 
 All notable changes to CONTENT ENGINE are documented here.
-Format: [version] — date.
+Format: [version] — date (newest first).
+
+## [0.1.1] — 2026-09-26
+
+Restart verification run (Phase 0 re-audit + Phase 1 improvements).
+Repository was audited first: the Phase 0/1 foundation from `045ec57`
+was present, tested (71 passed), lint-clean, and free of secrets, so it
+was **reused and improved** rather than replaced.
+
+### Changed
+
+- New `app/core/paths.py`: `.env`, SQLite, and storage paths now resolve
+  against the **repository root** instead of the process working
+  directory — the server behaves identically when started from the
+  project root, from `backend/`, or by a Linux service manager
+  (verified live: server started from `backend/` created the database at
+  the repository root, not `backend/data/`).
+- `app/core/config.py`: loads the project `.env` by absolute path
+  (CWD-independent).
+- `app/db/session.py`: `normalize_database_url()` anchors relative
+  SQLite paths at the repository root; absolute paths, `:memory:`, and
+  non-SQLite URLs unchanged.
+- `app/main.py`: storage root resolved through `project_path()`.
+
+### Added
+
+- `scripts/init_db.py` — explicit database initialization without
+  starting the server (recovery step 4); exit code 0/1, works from any
+  working directory.
+- 12 new tests (71 → **83**): path anchoring, CWD independence,
+  project-root `.env` loading behavior, storage/DB path normalization,
+  init script success + invalid-config failure (subprocess).
+- `RECOVERY.md` rewritten around the live GitHub remote: 7-step restore
+  procedure with the real clone URL, remote table, push workflow, and
+  restore drill.
+
+### Verified this run
+
+- `python -m pytest -q` → 83 passed
+- `python -m ruff check .` / `ruff format --check .` → clean
+- `python scripts/init_db.py` → `Tables: jobs`
+- live `GET /health` → `status=ok, database=ok` (server started from
+  `backend/` CWD)
 
 ## [0.1.0] — 2026-09-26
 

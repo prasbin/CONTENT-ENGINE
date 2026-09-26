@@ -14,6 +14,28 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.core.paths import project_path
+
+_SQLITE_PREFIX = "sqlite:///"
+
+
+def normalize_database_url(database_url: str) -> str:
+    """Anchor relative SQLite file paths at the repository root.
+
+    Relative paths such as ``sqlite:///./data/x.db`` would otherwise
+    depend on the process working directory (root vs ``backend/`` vs a
+    service manager's directory). Absolute paths, ``:memory:``, and
+    non-SQLite URLs pass through unchanged.
+    """
+    if not database_url.startswith(_SQLITE_PREFIX):
+        return database_url
+    raw_path = database_url[len(_SQLITE_PREFIX) :]
+    if raw_path in ("", ":memory:") or raw_path.startswith("/"):
+        return database_url
+    if Path(raw_path).is_absolute():
+        return database_url
+    return _SQLITE_PREFIX + project_path(raw_path).as_posix()
+
 
 def _prepare_sqlite_file(database_url: str) -> None:
     """Ensure the parent directory of a SQLite file exists."""
@@ -30,6 +52,7 @@ def create_engine_from_url(database_url: str, *, echo: bool = False) -> Engine:
     """Create an engine for the given SQLAlchemy database URL."""
     if not database_url:
         raise ValueError("database URL must not be empty")
+    database_url = normalize_database_url(database_url)
     options: dict[str, object] = {"echo": echo, "future": True}
     if database_url.startswith("sqlite"):
         options["connect_args"] = {"check_same_thread": False}

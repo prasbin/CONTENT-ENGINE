@@ -6,8 +6,8 @@ or user action.
 
 | Phase | Scope | Status | Notes |
 |------:|-------|--------|-------|
-| 0 | Environment audit, Git safety net, recovery docs | **DONE** | Repo initialized; `.gitignore`, RECOVERY.md |
-| 1 | Backend foundation: FastAPI app, config, DB, job model, health, auth, storage, provider interfaces, tests | **DONE** | 71 tests pass; ruff clean; live server verified |
+| 0 | Environment audit, Git safety net, recovery docs | **DONE** | Repo + GitHub remote; `.gitignore`; RECOVERY.md (7-step restore) |
+| 1 | Backend foundation: FastAPI app, config, DB, job model, health, auth, storage, provider interfaces, tests | **DONE** | 83 tests pass; ruff clean; CWD-independent paths; init_db script; live server verified |
 | 2 | Video acquisition: URL validation, download, source verification, source metadata | NOT STARTED | Needs FFmpeg installed (absent now) + `VideoSourceProvider` impl |
 | 3 | Transcription: speech-to-text, timestamped segments, persisted transcript | NOT STARTED | Needs a working STT backend (Whisper-class); `TranscriptionProvider` impl |
 | 4 | AI clip detection: strong moments (motivation, mindset, gym, podcasts, informative) | NOT STARTED | Needs Ollama or other inference (not installed); `ClipDetectionProvider` impl |
