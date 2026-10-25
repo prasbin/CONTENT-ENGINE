@@ -124,6 +124,26 @@ class Settings(BaseSettings):
         min_length=1,
         validation_alias="CE_FFPROBE_PATH",
     )
+    ce_ffmpeg_path: str = Field(
+        default="ffmpeg",
+        min_length=1,
+        validation_alias="CE_FFMPEG_PATH",
+    )
+    ce_whisper_model: str = Field(
+        default="tiny",
+        min_length=1,
+        validation_alias="CE_WHISPER_MODEL",
+    )
+    ce_whisper_device: str = Field(
+        default="cpu",
+        min_length=1,
+        validation_alias="CE_WHISPER_DEVICE",
+    )
+    ce_whisper_compute_type: str = Field(
+        default="int8",
+        min_length=1,
+        validation_alias="CE_WHISPER_COMPUTE_TYPE",
+    )
 
     @field_validator("ce_cors_origins", mode="before")
     @classmethod

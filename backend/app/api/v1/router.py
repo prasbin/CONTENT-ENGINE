@@ -7,8 +7,9 @@ stable for load balancers.
 
 from fastapi import APIRouter
 
-from app.api.v1 import health, jobs
+from app.api.v1 import health, jobs, storage
 
 api_router = APIRouter()
 api_router.include_router(health.router)
 api_router.include_router(jobs.router)
+api_router.include_router(storage.router)

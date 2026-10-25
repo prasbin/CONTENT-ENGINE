@@ -21,7 +21,14 @@ from app.db.session import (
     create_session_factory,
     init_db,
 )
-from app.providers.factory import build_storage, build_video_source_provider
+from app.providers.factory import (
+    build_captioner,
+    build_clip_detector,
+    build_renderer,
+    build_storage,
+    build_transcriber,
+    build_video_source_provider,
+)
 from app.providers.registry import build_default_registry
 from app.services.jobs import JobService
 
@@ -64,9 +71,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.auth_provider = build_auth_provider(resolved)
     app.state.storage = build_storage(resolved)
     app.state.video_source = build_video_source_provider(resolved, app.state.storage)
+    app.state.transcriber = build_transcriber(resolved, app.state.storage)
+    app.state.clip_detector = build_clip_detector()
+    app.state.captioner = build_captioner()
+    app.state.renderer = build_renderer(resolved, app.state.storage)
     app.state.providers = build_default_registry(
         storage=app.state.storage,
         video_source=app.state.video_source,
+        transcription=app.state.transcriber,
+        clip_detection=app.state.clip_detector,
+        captions=app.state.captioner,
+        renderer=app.state.renderer,
     )
 
     if not resolved.auth_enabled and resolved.is_production:

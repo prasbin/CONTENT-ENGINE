@@ -1,8 +1,10 @@
-"""Acquisition worker CLI script.
+"""Worker CLI script: acquisition and pipeline workers.
 
 Usage:
-  python scripts/worker.py run [--once] [--poll SECONDS]
+  python scripts/worker.py run [--once] [--poll SECONDS] [--max-jobs N]
   python scripts/worker.py recover
+  python scripts/worker.py pipeline run [--once] [--poll SECONDS] [--max-jobs N]
+  python scripts/worker.py pipeline recover
 """
 
 from __future__ import annotations
@@ -22,40 +24,36 @@ from app.db.session import (  # noqa: E402
     create_session_factory,
     init_db,
 )
-from app.providers.factory import build_storage, build_video_source_provider  # noqa: E402
+from app.providers.factory import (  # noqa: E402
+    build_pipeline_worker,
+    build_storage,
+    build_video_source_provider,
+)
 from app.services.jobs import JobService  # noqa: E402
 from app.workers.acquisition import AcquisitionWorker  # noqa: E402
 
 
+def _add_run_args(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--once", action="store_true", help="Process at most one job then exit")
+    p.add_argument("--poll", type=float, default=2.0, help="Polling interval in seconds when idle")
+    p.add_argument("--max-jobs", type=int, default=None, help="Stop after processing N jobs")
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="CONTENT ENGINE Acquisition Worker")
+    parser = argparse.ArgumentParser(description="CONTENT ENGINE Worker")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    # run command
-    run_parser = subparsers.add_parser(
-        "run",
-        help="Run the acquisition worker loop",
-    )
-    run_parser.add_argument(
-        "--once",
-        action="store_true",
-        help="Process at most one job then exit",
-    )
-    run_parser.add_argument(
-        "--poll",
-        type=float,
-        default=2.0,
-        help="Polling interval in seconds when idle",
-    )
-    run_parser.add_argument(
-        "--max-jobs",
-        type=int,
-        default=None,
-        help="Stop after processing N jobs",
-    )
-
-    # recover command
+    run_parser = subparsers.add_parser("run", help="Run the acquisition worker loop")
+    _add_run_args(run_parser)
     subparsers.add_parser("recover", help="Requeue jobs interrupted while downloading")
+
+    pipe_parser = subparsers.add_parser(
+        "pipeline", help="Run the transcription->render pipeline worker"
+    )
+    pipe_sub = pipe_parser.add_subparsers(dest="pipe_command", required=True)
+    prun = pipe_sub.add_parser("run", help="Run the pipeline worker loop")
+    _add_run_args(prun)
+    pipe_sub.add_parser("recover", help="Requeue jobs interrupted mid-pipeline")
 
     args = parser.parse_args()
 
@@ -67,6 +65,18 @@ def main() -> None:
     session_factory = create_session_factory(engine)
     job_service = JobService(session_factory)
     storage = build_storage(settings)
+
+    if args.command == "pipeline":
+        worker = build_pipeline_worker(settings, job_service, storage)
+        if args.pipe_command == "recover":
+            requeued = worker.recover_interrupted()
+            print(f"Requeued {len(requeued)} pipeline job(s): {requeued}")
+            sys.exit(0)
+        elif args.pipe_command == "run":
+            max_jobs = 1 if args.once else args.max_jobs
+            worker.run(max_jobs=max_jobs, poll_seconds=args.poll)
+            sys.exit(0)
+
     provider = build_video_source_provider(settings, storage)
     worker = AcquisitionWorker(job_service=job_service, provider=provider, settings=settings)
 
@@ -74,7 +84,6 @@ def main() -> None:
         requeued = worker.recover_interrupted()
         print(f"Requeued {len(requeued)} downloading job(s): {requeued}")
         sys.exit(0)
-
     elif args.command == "run":
         max_jobs = 1 if args.once else args.max_jobs
         worker.run(max_jobs=max_jobs, poll_seconds=args.poll)

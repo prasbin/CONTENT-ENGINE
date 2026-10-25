@@ -47,10 +47,22 @@ def build_default_registry(
     *,
     storage: StorageProvider,
     video_source: object | None = None,
+    transcription: object | None = None,
+    clip_detection: object | None = None,
+    captions: object | None = None,
+    renderer: object | None = None,
 ) -> ProviderRegistry:
-    """Build the default registry (storage + video_source from Phase 2)."""
+    """Build the default registry with all configured providers."""
     registry = ProviderRegistry()
     registry.register("storage", storage)
     if video_source is not None:
         registry.register("video_source", video_source)
+    if transcription is not None:
+        registry.register("transcription", transcription)
+    if clip_detection is not None:
+        registry.register("clip_detection", clip_detection)
+    if captions is not None:
+        registry.register("captions", captions)
+    if renderer is not None:
+        registry.register("renderer", renderer)
     return registry

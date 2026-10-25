@@ -89,29 +89,40 @@ class JobService:
 
     def claim_next_queued(self) -> Job | None:
         """Atomically claim the oldest queued job (CAS on status='queued')."""
+        return self._claim_in_status(JobStatus.QUEUED, start_status=JobStatus.DOWNLOADING)
+
+    def _claim_in_status(
+        self, status: JobStatus, *, start_status: JobStatus | None = None
+    ) -> Job | None:
+        """Atomically claim the oldest job in ``status``.
+
+        When ``start_status`` is given the job moves to it (acquisition: queued -> downloading).
+        When it is None the job keeps its current status (pipeline stages are
+        claimed in place so a crash leaves them recoverable in the same stage).
+        """
+        target = (start_status or status).value
         for _ in range(3):
             with session_scope(self._session_factory) as session:
                 job_id = session.scalar(
                     select(Job.id)
-                    .where(Job.status == JobStatus.QUEUED.value)
+                    .where(Job.status == status.value)
                     .order_by(Job.created_at.asc(), Job.id.asc())
                     .limit(1)
                 )
                 if job_id is None:
                     return None
                 job = session.get(Job, job_id)
-                if job is None or job.status != JobStatus.QUEUED.value:
+                if job is None or job.status != status.value:
                     continue
                 payload = dict(job.payload or {})
                 attempts = int(payload.get("attempts", 0)) + 1
                 payload["attempts"] = attempts
 
-                # CAS update
                 res = session.execute(
                     update(Job)
-                    .where(Job.id == job_id, Job.status == JobStatus.QUEUED.value)
+                    .where(Job.id == job_id, Job.status == status.value)
                     .values(
-                        status=JobStatus.DOWNLOADING.value,
+                        status=target,
                         progress=10,
                         payload=payload,
                         updated_at=utcnow(),
@@ -151,6 +162,86 @@ class JobService:
                 job.payload = {**(job.payload or {}), "acquisition": acquisition_payload}
                 job.updated_at = utcnow()
                 session.add(job)
+
+    def _advance(
+        self,
+        session: Session,
+        job: Job,
+        target: JobStatus,
+        *,
+        payload: dict | None = None,
+        progress: int | None = None,
+    ) -> None:
+        target_val = target.value
+        if not can_transition(job.status, target_val):
+            raise InvalidTransitionError(
+                f"cannot move job '{job.id}' from '{job.status}' to '{target_val}'"
+            )
+        job.status = target_val
+        if progress is not None:
+            job.progress = max(0, min(100, int(progress)))
+        if payload:
+            job.payload = {**(job.payload or {}), **payload}
+        job.updated_at = utcnow()
+        session.add(job)
+
+    def complete_transcription(self, job_id: str, transcript: dict) -> None:
+        with session_scope(self._session_factory) as session:
+            job = session.get(Job, job_id)
+            if job is not None:
+                self._advance(
+                    session, job, JobStatus.ANALYZING,
+                    payload={"transcript": transcript}, progress=40,
+                )
+
+    def complete_clip_detection(self, job_id: str, clips: list[dict]) -> None:
+        with session_scope(self._session_factory) as session:
+            job = session.get(Job, job_id)
+            if job is not None:
+                self._advance(
+                    session, job, JobStatus.RENDERING,
+                    payload={"clips": clips}, progress=50,
+                )
+
+    def complete_rendering(self, job_id: str, clips_with_refs: list[dict]) -> None:
+        """Move rendering -> review, storing clip asset refs + download URLs."""
+        with session_scope(self._session_factory) as session:
+            job = session.get(Job, job_id)
+            if job is not None:
+                self._advance(
+                    session, job, JobStatus.REVIEW,
+                    payload={"clips": clips_with_refs}, progress=100,
+                )
+
+    def recover_pipeline_jobs(self) -> list[str]:
+        """Requeue jobs stuck mid-pipeline back to a safe re-runnable stage.
+
+        transcribing/analyzing -> transcribing (re-transcribe, idempotent overwrite).
+        rendering/captioning   -> rendering   (re-render from stored transcript).
+        """
+        requeued: list[str] = []
+        with session_scope(self._session_factory) as session:
+            for status, target in (
+                (JobStatus.TRANSCRIBING, JobStatus.TRANSCRIBING),
+                (JobStatus.ANALYZING, JobStatus.TRANSCRIBING),
+                (JobStatus.RENDERING, JobStatus.RENDERING),
+                (JobStatus.CAPTIONING, JobStatus.RENDERING),
+            ):
+                for job in session.scalars(select(Job).where(Job.status == status.value)):
+                    if can_transition(job.status, target.value):
+                        job.status = target.value
+                        job.progress = 0
+                        payload = dict(job.payload or {})
+                        payload["recovery"] = {
+                            "reason": f"interrupted while {job.status}",
+                            "requeued_at": utcnow().isoformat(),
+                        }
+                        job.payload = payload
+                        job.updated_at = utcnow()
+                        session.add(job)
+                        requeued.append(job.id)
+            session.flush()
+        return requeued
 
     def recover_downloading_jobs(self) -> list[str]:
         """Requeue jobs stuck in 'downloading' from a previous crash/restart."""
