@@ -156,7 +156,8 @@ def register_exception_handlers(app: FastAPI) -> None:
         if settings is not None and settings.log_tracebacks:
             logger.exception("unhandled error on %s %s", request.method, request.url.path)
         else:
-            logger.error("unhandled error on %s %s: %s", request.method, request.url.path, type(exc).__name__)
+            exc_type = type(exc).__name__
+            logger.error("unhandled error on %s %s: %s", request.method, request.url.path, exc_type)
         return JSONResponse(
             status_code=500,
             content=_error_body("internal_error", "Internal server error"),
