@@ -1,0 +1,12 @@
+{
+  "name": "Content Engine",
+  "short_name": "ContentEngine",
+  "description": "AI short-clip generator from long-form YouTube videos.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b1120",
+  "theme_color": "#0b1120",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

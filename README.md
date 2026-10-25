@@ -13,60 +13,84 @@ server, never inside the APK. The laptop is only for development.
 
 | Phase | Scope | Status |
 |-------|-------|--------|
-| 0 | Environment audit, Git safety, recovery docs | **DONE** (re-verified this run) |
-| 1 | Backend foundation: FastAPI, config, DB, jobs, health, auth, storage, providers, tests | **DONE** (re-verified this run) |
-| 2+ | Download, transcription, AI, rendering, captions, publishing, deployment, APK | **NOT IMPLEMENTED** |
+| 0 | Environment audit, Git safety, recovery docs | **DONE** |
+| 1 | Backend foundation: FastAPI, config, DB, jobs, health, auth, storage, providers, tests | **DONE** |
+| 2 | Video acquisition (yt-dlp), DB-backed worker, retry/recovery, worker CLI | **DONE** (code + tests; FFmpeg not installed locally) |
+| 3 | Transcription (faster-whisper) | **NOT IMPLEMENTED** |
+| 4 | AI clip detection (Ollama) | **NOT IMPLEMENTED** |
+| 5–6 | Rendering + captions (FFmpeg) | **NOT IMPLEMENTED** |
+| 7 | Metadata + human review | **NOT IMPLEMENTED** |
+| 8–10 | Publishing (YouTube/Instagram) | **NOT IMPLEMENTED** (manual upload only by design) |
+| 11 | Remote deployment (NPR 0) | **NOT VERIFIED** |
+| FE | Vite/React frontend: URL input, progress, clip cards, downloads | **DONE** (builds clean; end-to-end blocked on Phase 3–6) |
 
 Repository: `https://github.com/prasbin/CONTENT-ENGINE.git` (branch
 `main`) — the disaster-recovery source of truth; see RECOVERY.md.
 
-Verified in this run (2026-09-26 restart):
+Verified this run (2026-10-25):
 
-- `python -m pytest -q` → **83 passed**
-- `python -m ruff check .` → **All checks passed**; `ruff format --check .` → 49 files formatted
-- `python scripts/init_db.py` → `Database initialized … Tables: jobs`
-- Live server started from the `backend/` working directory (proving
-  CWD-independent path resolution), `GET /health` →
-  `status=ok, database=ok`, database file created at the repository root
+- `python -m pytest -q` → **99 passed, 1 skipped**
+- `python -m ruff check .` → **All checks passed**
+- `python -m ruff format --check backend/app/models/` → **2 files already formatted**
+  (4 pre-existing files elsewhere have formatting drift; left untouched to preserve existing work)
+- Frontend `npm run build` → **built in ~2.7s, 0 errors** (150 kB JS / 6.6 kB CSS gzipped)
+- Restored missing `backend/app/models/` package (`Job`, `JobStatus`, `can_transition`, `PIPELINE_ORDER`) that the existing services, schemas, and tests import but was absent from disk
 
-Verified in the original Phase 1 run (2026-09-26): live server
-`GET /health` → `status=ok, database=ok`; with `CE_API_TOKEN` set,
-`GET /api/v1/jobs` returned **401** without a token and **200** with a
-valid token; `POST /api/v1/jobs` created a real job.
+Not verified / blocked in this environment:
+- FFmpeg / ffprobe not installed → no media probing or rendering
+- faster-whisper / Ollama not installed → no transcription or AI clip detection
+- No live backend request exercised (dev server cannot run in this sandbox)
+- No end-to-end job (URL → three rendered clips) was run
+- No production deployment (NPR 0 hosting not yet selected)
+- Docker, APK build, YouTube/Instagram publishing: not applicable here
 
-Not verified (blocked/not applicable in this environment): Docker (not
-installed), FFmpeg (not installed), Ollama (not installed), cloud
-deployment (no account/budget), APK build, YouTube/Instagram publishing.
-See ROADMAP.md and the final Phase 0/1 report.
+The frontend builds and its API client matches the real FastAPI routes,
+but it cannot produce real clips until Phase 3–6 are implemented.
 
 ## Requirements
 
-- Python 3.12+ (tested: 3.12.10 on Windows 10/11; backend is Linux-compatible)
+- Python 3.12+ (tested: 3.13.5 on Linux; backend is Linux-compatible)
+- Node.js 18+ and npm (for the frontend)
 - Git (for version control/recovery)
+- Optional, for full pipeline: FFmpeg (ffprobe), faster-whisper, Ollama
 
-```powershell
+```bash
 pip install -r requirements-dev.txt   # runtime + test/lint deps
+cd frontend && npm install             # frontend deps
 ```
 
 ## Quickstart
 
-```powershell
+```bash
 # 1. configure (never commit .env)
-copy .env.example .env
+cp .env.example .env
 
 # 2. initialize the database (optional - also happens on first server start)
 python scripts/init_db.py
 
 # 3. run the API (http://127.0.0.1:8000, docs at /docs)
-.\scripts\dev.ps1
+./scripts/dev.sh
 # equivalent: python -m uvicorn app.main:app --app-dir backend --reload
 
 # 4. run tests + lint
-.\scripts\test.ps1
-# equivalent: python -m pytest -q
+./scripts/test.sh
+# equivalent: python -m pytest -q && python -m ruff check .
 ```
 
-Linux/macOS: `./scripts/dev.sh`, `./scripts/test.sh`.
+### Frontend (Vite + React)
+
+```bash
+cd frontend
+cp .env.example .env      # optional: set VITE_API_BASE_URL for production
+npm install
+npm run dev               # http://localhost:5173
+npm run build             # production build into frontend/dist/
+```
+
+In development the Vite dev server proxies `/api` to the FastAPI backend
+at `http://127.0.0.1:8000` (configurable via `VITE_API_BASE_URL`). Run
+the backend and frontend in two terminals. The UI polls the job status
+every 2 seconds and shows progress through the pipeline stages.
 
 Relative config/database/storage paths resolve against the repository
 root, so the server behaves identically regardless of the working
@@ -106,6 +130,13 @@ Copy `.env.example` → `.env`. All values come from the environment:
 | `CE_OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Future AI inference endpoint |
 | `CE_LOG_LEVEL` | `INFO` | `DEBUG\|INFO\|WARNING\|ERROR\|CRITICAL` |
 
+Frontend variables (in `frontend/.env`):
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `VITE_API_BASE_URL` | *(empty)* | Base URL of the FastAPI backend. Empty in dev uses the Vite proxy. |
+| `VITE_API_TOKEN` | *(empty)* | Bearer token matching `CE_API_TOKEN` (same-origin deployments only). |
+
 Invalid configuration fails fast with a message naming the exact
 variable (e.g. `invalid configuration -> CE_PORT: Input should be...`).
 
@@ -117,20 +148,23 @@ CONTENT ENGINE/
 ├── .gitignore            # secrets, data, media, build outputs excluded
 ├── README.md  ARCHITECTURE.md  ROADMAP.md  CHANGELOG.md  RECOVERY.md
 ├── requirements.txt  requirements-dev.txt  pyproject.toml
-├── scripts/              # dev/test scripts + init_db.py (database init)
-└── backend/
-    ├── app/
-    │   ├── main.py       # FastAPI factory + lifespan (DB init)
-    │   ├── api/          # deps (auth/DI), v1 routes (health, jobs)
-    │   ├── core/         # config, paths, logging+redaction, errors, security
-    │   ├── db/           # SQLAlchemy base + engine/session helpers
-    │   ├── models/       # Job + JobStatus + transition rules
-    │   ├── schemas/      # Pydantic request/response models
-    │   ├── services/     # JobService (only write path to jobs table)
-    │   ├── providers/    # pipeline interfaces + registry (DI)
-    │   ├── storage/      # StorageProvider protocol + LocalStorage
-    │   └── workers/      # documented placeholder (Phase 2+, DB-backed)
-    └── tests/            # 83 behavioral tests
+├── scripts/              # dev/test scripts + init_db.py + worker.py
+├── backend/
+│   ├── app/
+│   │   ├── main.py       # FastAPI factory + lifespan (DB init)
+│   │   ├── api/          # deps (auth/DI), v1 routes (health, jobs)
+│   │   ├── core/         # config, paths, logging+redaction, errors, security
+│   │   ├── db/           # SQLAlchemy base + engine/session helpers
+│   │   ├── models/       # Job + JobStatus + transition rules
+│   │   ├── schemas/      # Pydantic request/response models
+│   │   ├── services/     # JobService (only write path to jobs table)
+│   │   ├── providers/    # pipeline interfaces + yt-dlp source + media probe
+│   │   ├── storage/      # StorageProvider protocol + LocalStorage
+│   │   └── workers/      # AcquisitionWorker (DB-backed queue)
+│   └── tests/            # 99 behavioral tests
+└── frontend/             # Vite + React UI
+    ├── src/              # App, api client, types, stages, clips
+    └── public/           # favicon, PWA manifest
 ```
 
 ## Design highlights
@@ -147,8 +181,32 @@ CONTENT ENGINE/
 - **Working-directory independent**: `.env`, SQLite files, and storage
   paths resolve against the repository root (tested), so Linux service
   managers or odd CWDs cannot silently redirect data or miss config.
-- **No fake functionality**: only Phase 1 features exist. No download,
-  transcription, rendering, or publishing code is present yet.
+- **No fake functionality**: the frontend never displays simulated clips.
+  Clip cards show a placeholder until a real `download_url` is present in
+  the job payload; previews and download buttons are wired to real backend
+  output URLs only.
+
+## Current limitations (honest)
+
+- **No transcription, AI clip selection, or rendering yet.** Submitting a
+  URL creates a job, but the pipeline stops after acquisition. The frontend
+  will show progress through `downloading` then report that clips are not
+  available. This is intentional, not a bug.
+- **FFmpeg is required** for media validation, rendering, and caption
+  burning. It is not installed in this environment.
+- **No production deployment.** NPR 0 hosting for long-running Python
+  video workers is not yet selected. The app is not independently
+  deployable yet.
+- **Manual upload only.** Automatic YouTube/Instagram publishing is
+  intentionally out of scope; the user downloads MP4s and uploads them.
+
+## Remaining acceptance criteria
+
+The project is **not** complete. To meet the full directive, the next
+work is: implement Phase 3 (faster-whisper transcription), Phase 4 (AI
+clip detection producing 20s/30s/35s candidates), Phase 5–6 (FFmpeg
+rendering + burned-in captions with exact durations), a download
+endpoint, and a verified NPR 0 deployment target.
 
 ## Content rights disclaimer
 
