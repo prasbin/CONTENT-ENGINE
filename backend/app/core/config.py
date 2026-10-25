@@ -145,6 +145,22 @@ class Settings(BaseSettings):
         validation_alias="CE_WHISPER_COMPUTE_TYPE",
     )
 
+    # --- Phase 6: resource limits ---------------------------------------
+    ce_max_storage_bytes: int = Field(
+        default=10 * 1024 * 1024 * 1024,
+        ge=1024 * 1024,
+        validation_alias="CE_MAX_STORAGE_BYTES",
+    )
+    ce_worker_poll_seconds: float = Field(
+        default=2.0,
+        ge=0.1,
+        validation_alias="CE_WORKER_POLL_SECONDS",
+    )
+    ce_temp_cleanup_enabled: bool = Field(
+        default=True,
+        validation_alias="CE_TEMP_CLEANUP_ENABLED",
+    )
+
     @field_validator("ce_cors_origins", mode="before")
     @classmethod
     def _parse_cors_origins(cls, value: object) -> list[str]:
@@ -221,6 +237,15 @@ class Settings(BaseSettings):
     @property
     def auth_enabled(self) -> bool:
         return self.ce_api_token is not None
+
+    @property
+    def log_tracebacks(self) -> bool:
+        """Whether to log full tracebacks for unhandled exceptions.
+
+        Disabled in production to avoid leaking filesystem paths or internal
+        details. Production logs show only a generic internal_error response.
+        """
+        return not self.is_production
 
     @property
     def is_production(self) -> bool:

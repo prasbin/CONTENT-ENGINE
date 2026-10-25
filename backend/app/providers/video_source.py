@@ -116,6 +116,14 @@ class YtDlpSourceProvider:
             report(PROGRESS_VALIDATED)
 
             asset_ref = f"sources/{job_id}/source.{ext}"
+            if hasattr(self._storage, "total_size_bytes"):
+                current_usage = self._storage.total_size_bytes()
+                storage_limit = getattr(self._settings, "ce_max_storage_bytes", 0)
+                if storage_limit and current_usage + size > storage_limit:
+                    raise SourceTooLargeError(
+                        f"storing this source ({size} bytes) would exceed the "
+                        f"storage limit ({storage_limit} bytes, {current_usage} already used)"
+                    )
             stored_ref = self._storage.save_file(asset_ref, path)
             report(PROGRESS_STORED)
 

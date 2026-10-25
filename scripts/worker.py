@@ -35,7 +35,7 @@ from app.workers.acquisition import AcquisitionWorker  # noqa: E402
 
 def _add_run_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--once", action="store_true", help="Process at most one job then exit")
-    p.add_argument("--poll", type=float, default=2.0, help="Polling interval in seconds when idle")
+    p.add_argument("--poll", type=float, default=None, help="Polling interval in seconds when idle")
     p.add_argument("--max-jobs", type=int, default=None, help="Stop after processing N jobs")
 
 
@@ -74,7 +74,8 @@ def main() -> None:
             sys.exit(0)
         elif args.pipe_command == "run":
             max_jobs = 1 if args.once else args.max_jobs
-            worker.run(max_jobs=max_jobs, poll_seconds=args.poll)
+            poll = args.poll if args.poll is not None else settings.ce_worker_poll_seconds
+            worker.run(max_jobs=max_jobs, poll_seconds=poll)
             sys.exit(0)
 
     provider = build_video_source_provider(settings, storage)
@@ -86,7 +87,8 @@ def main() -> None:
         sys.exit(0)
     elif args.command == "run":
         max_jobs = 1 if args.once else args.max_jobs
-        worker.run(max_jobs=max_jobs, poll_seconds=args.poll)
+        poll = args.poll if args.poll is not None else settings.ce_worker_poll_seconds
+        worker.run(max_jobs=max_jobs, poll_seconds=poll)
         sys.exit(0)
 
 

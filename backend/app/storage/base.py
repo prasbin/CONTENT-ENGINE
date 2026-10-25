@@ -41,3 +41,7 @@ class StorageProvider(Protocol):
     def path_for(self, name: str) -> Path:
         """Local filesystem path for the object (local/sidecar storage only)."""
         ...
+
+    def total_size_bytes(self) -> int:
+        """Total bytes used by all stored objects."""
+        ...

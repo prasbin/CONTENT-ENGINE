@@ -78,3 +78,10 @@ class LocalStorage:
 
     def path_for(self, name: str) -> Path:
         return self._resolve(name)
+
+    def total_size_bytes(self) -> int:
+        """Sum of all file sizes under the storage root."""
+        root = self._root.resolve()
+        if not root.is_dir():
+            return 0
+        return sum(f.stat().st_size for f in root.rglob("*") if f.is_file())

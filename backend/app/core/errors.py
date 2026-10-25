@@ -152,7 +152,11 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def _unhandled(request: Request, exc: Exception) -> Any:
         from starlette.responses import JSONResponse
 
-        logger.exception("unhandled error on %s %s", request.method, request.url.path)
+        settings = getattr(request.app.state, "settings", None)
+        if settings is not None and settings.log_tracebacks:
+            logger.exception("unhandled error on %s %s", request.method, request.url.path)
+        else:
+            logger.error("unhandled error on %s %s: %s", request.method, request.url.path, type(exc).__name__)
         return JSONResponse(
             status_code=500,
             content=_error_body("internal_error", "Internal server error"),
