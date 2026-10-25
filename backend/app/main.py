@@ -15,16 +15,15 @@ from app.api.v1.router import api_router
 from app.core.config import Settings, get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import setup_logging
-from app.core.paths import project_path
 from app.core.security import build_auth_provider
 from app.db.session import (
     create_engine_from_url,
     create_session_factory,
     init_db,
 )
+from app.providers.factory import build_storage, build_video_source_provider
 from app.providers.registry import build_default_registry
 from app.services.jobs import JobService
-from app.storage.local import LocalStorage
 
 logger = logging.getLogger("content_engine")
 
@@ -63,8 +62,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = resolved
     app.state.auth_provider = build_auth_provider(resolved)
-    app.state.storage = LocalStorage(root=project_path(resolved.ce_storage_path))
-    app.state.providers = build_default_registry(storage=app.state.storage)
+    app.state.storage = build_storage(resolved)
+    app.state.video_source = build_video_source_provider(resolved, app.state.storage)
+    app.state.providers = build_default_registry(
+        storage=app.state.storage,
+        video_source=app.state.video_source,
+    )
 
     if not resolved.auth_enabled and resolved.is_production:
         logger.warning("CE_API_TOKEN is empty while APP_ENV=production - auth is disabled")

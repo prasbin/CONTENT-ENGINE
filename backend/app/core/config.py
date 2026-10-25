@@ -24,6 +24,22 @@ LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
 DEFAULT_CORS_ORIGINS: tuple[str, ...] = ("http://localhost:5173", "http://127.0.0.1:5173")
 
+#: 2 GiB default cap on a single source download.
+DEFAULT_MAX_SOURCE_BYTES: int = 2 * 1024 * 1024 * 1024
+DEFAULT_DOWNLOAD_TIMEOUT_SECONDS: int = 600
+DEFAULT_ALLOWED_SCHEMES: tuple[str, ...] = ("http", "https")
+DEFAULT_ALLOWED_MEDIA_EXTENSIONS: tuple[str, ...] = (
+    "mp4",
+    "mov",
+    "mkv",
+    "webm",
+    "m4v",
+    "avi",
+    "flv",
+    "ts",
+)
+DEFAULT_MAX_ACQUISITION_ATTEMPTS: int = 3
+
 
 class ConfigurationError(ValueError):
     """Raised when environment configuration is missing or invalid."""
@@ -73,10 +89,78 @@ class Settings(BaseSettings):
     )
     ce_log_level: LogLevel = Field(default="INFO", validation_alias="CE_LOG_LEVEL")
 
+    # --- Phase 2: video acquisition -------------------------------------
+    ce_max_source_bytes: int = Field(
+        default=DEFAULT_MAX_SOURCE_BYTES,
+        ge=1024,
+        validation_alias="CE_MAX_SOURCE_BYTES",
+    )
+    ce_download_timeout_seconds: int = Field(
+        default=DEFAULT_DOWNLOAD_TIMEOUT_SECONDS,
+        ge=1,
+        le=86400,
+        validation_alias="CE_DOWNLOAD_TIMEOUT_SECONDS",
+    )
+    ce_allowed_schemes: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: list(DEFAULT_ALLOWED_SCHEMES),
+        validation_alias="CE_ALLOWED_SCHEMES",
+    )
+    ce_require_media_probe: bool = Field(
+        default=True,
+        validation_alias="CE_REQUIRE_MEDIA_PROBE",
+    )
+    ce_allowed_media_extensions: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: list(DEFAULT_ALLOWED_MEDIA_EXTENSIONS),
+        validation_alias="CE_ALLOWED_MEDIA_EXTENSIONS",
+    )
+    ce_max_acquisition_attempts: int = Field(
+        default=DEFAULT_MAX_ACQUISITION_ATTEMPTS,
+        ge=1,
+        le=20,
+        validation_alias="CE_MAX_ACQUISITION_ATTEMPTS",
+    )
+    ce_ffprobe_path: str = Field(
+        default="ffprobe",
+        min_length=1,
+        validation_alias="CE_FFPROBE_PATH",
+    )
+
     @field_validator("ce_cors_origins", mode="before")
     @classmethod
     def _parse_cors_origins(cls, value: object) -> list[str]:
         return _split_origins(value)
+
+    @field_validator("ce_allowed_schemes", mode="before")
+    @classmethod
+    def _parse_allowed_schemes(cls, value: object) -> list[str]:
+        schemes = _split_origins(value)
+        normalized = []
+        for scheme in schemes:
+            scheme = scheme.lower().strip()
+            # Only network schemes may ever reach the downloader: this
+            # blocks file://, javascript:, data:, etc. at the config layer.
+            if scheme not in ("http", "https"):
+                raise ValueError(
+                    f"unsupported URL scheme '{scheme}' (only http and https are allowed)"
+                )
+            normalized.append(scheme)
+        if not normalized:
+            raise ValueError("CE_ALLOWED_SCHEMES must contain at least one scheme")
+        return normalized
+
+    @field_validator("ce_allowed_media_extensions", mode="before")
+    @classmethod
+    def _parse_allowed_extensions(cls, value: object) -> list[str]:
+        extensions = _split_origins(value)
+        normalized = []
+        for ext in extensions:
+            ext = ext.lower().lstrip(".")
+            if not ext.isalnum():
+                raise ValueError(f"invalid media extension '{ext}'")
+            normalized.append(ext)
+        if not normalized:
+            raise ValueError("CE_ALLOWED_MEDIA_EXTENSIONS must contain at least one extension")
+        return normalized
 
     @field_validator("ce_public_base_url", "ce_ollama_base_url")
     @classmethod

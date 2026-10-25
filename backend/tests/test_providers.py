@@ -69,7 +69,6 @@ def test_registry_rejects_empty_name() -> None:
 
 def test_phase_hint_covers_future_providers() -> None:
     expected = {
-        "video_source",
         "transcription",
         "clip_detection",
         "renderer",

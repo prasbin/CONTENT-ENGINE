@@ -7,7 +7,6 @@ from app.storage.base import StorageProvider
 
 #: Which development phase will provide each missing provider.
 PHASE_HINTS: dict[str, str] = {
-    "video_source": "planned for Phase 2",
     "transcription": "planned for Phase 3",
     "clip_detection": "planned for Phase 4",
     "renderer": "planned for Phase 5",
@@ -44,8 +43,14 @@ class ProviderRegistry:
         return isinstance(name, str) and name in self._providers
 
 
-def build_default_registry(*, storage: StorageProvider) -> ProviderRegistry:
-    """Build the Phase 1 registry (storage only)."""
+def build_default_registry(
+    *,
+    storage: StorageProvider,
+    video_source: object | None = None,
+) -> ProviderRegistry:
+    """Build the default registry (storage + video_source from Phase 2)."""
     registry = ProviderRegistry()
     registry.register("storage", storage)
+    if video_source is not None:
+        registry.register("video_source", video_source)
     return registry

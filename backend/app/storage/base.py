@@ -18,6 +18,14 @@ class StorageProvider(Protocol):
         """Store bytes under ``name``; returns the canonical object name."""
         ...
 
+    def save_file(self, name: str, source_path: Path) -> str:
+        """Copy a local file into storage without loading it into memory.
+
+        Used for large artifacts (source videos). ``source_path`` is a
+        trusted temporary path, never a user-supplied one.
+        """
+        ...
+
     def read(self, name: str) -> bytes:
         """Return stored bytes."""
         ...

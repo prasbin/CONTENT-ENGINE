@@ -63,6 +63,41 @@ class ProviderNotConfiguredError(ContentEngineError):
     status_code = 501
 
 
+class DownloadFailedError(ContentEngineError):
+    """The downloader could not retrieve the source."""
+
+    code = "download_failed"
+    status_code = 502
+
+
+class DownloadTimeoutError(ContentEngineError):
+    """The download exceeded the configured time budget."""
+
+    code = "download_timeout"
+    status_code = 504
+
+
+class SourceTooLargeError(ContentEngineError):
+    """The source exceeds CE_MAX_SOURCE_BYTES."""
+
+    code = "source_too_large"
+    status_code = 413
+
+
+class InvalidMediaError(ContentEngineError):
+    """Downloaded output is not an acceptable media file."""
+
+    code = "invalid_media"
+    status_code = 422
+
+
+class MediaProbeUnavailableError(ContentEngineError):
+    """A media probe is required but no probe backend (ffprobe) is available."""
+
+    code = "media_probe_unavailable"
+    status_code = 501
+
+
 def _error_body(code: str, message: str, details: Any | None = None) -> dict[str, Any]:
     error: dict[str, Any] = {"code": code, "message": message}
     if details is not None:

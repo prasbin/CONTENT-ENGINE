@@ -8,14 +8,57 @@ are required to use these interfaces.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import asdict, dataclass, field
 from typing import Any, Protocol
+
+#: Receives clamped 0-100 progress updates for a running operation.
+ProgressCallback = Callable[[int], None]
+
+
+@dataclass(frozen=True)
+class AcquisitionResult:
+    """Structured outcome of a successful source acquisition."""
+
+    asset_ref: str
+    """Stable StorageProvider reference, e.g. ``sources/<job_id>/source.mp4``."""
+
+    source_url: str
+    filename: str
+    media_type: str
+    size_bytes: int
+    duration_seconds: float | None = None
+    width: int | None = None
+    height: int | None = None
+    probed: bool = False
+    """True only when a real media probe (ffprobe) validated the file."""
+
+    title: str | None = None
+    extractor: str | None = None
+    extra: dict[str, Any] = field(default_factory=dict)
+
+    def to_payload(self) -> dict[str, Any]:
+        """JSON-safe representation for the job ``payload.acquisition`` field."""
+        return asdict(self)
 
 
 class VideoSourceProvider(Protocol):
     """Acquires the source video for a job (Phase 2)."""
 
-    def acquire(self, url: str) -> str:
-        """Download/resolve ``url``; returns a local source reference."""
+    def acquire(
+        self,
+        url: str,
+        *,
+        job_id: str,
+        progress: ProgressCallback | None = None,
+    ) -> AcquisitionResult:
+        """Validate ``url``, download it, store it, and describe the result.
+
+        ``progress`` is an optional ``Callable[[int], None]`` receiving
+        clamped 0-100 values. Implementations must raise
+        :class:`app.core.errors.ContentEngineError` subclasses on
+        failure - never return a partial success.
+        """
         ...
 
 

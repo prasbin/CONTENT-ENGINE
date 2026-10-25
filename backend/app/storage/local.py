@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import shutil
 from pathlib import Path, PurePosixPath
 
 from app.core.errors import NotFoundError, StoragePathError
@@ -50,6 +51,14 @@ class LocalStorage:
         target = self._resolve(name)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
+        return self._canonical(target, self._root.resolve())
+
+    def save_file(self, name: str, source_path: Path) -> str:
+        if not source_path.is_file():
+            raise NotFoundError(f"source file '{source_path.name}' not found")
+        target = self._resolve(name)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source_path, target)
         return self._canonical(target, self._root.resolve())
 
     def read(self, name: str) -> bytes:

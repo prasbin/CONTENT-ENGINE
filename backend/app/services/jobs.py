@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.errors import InvalidTransitionError, NotFoundError
@@ -73,7 +73,7 @@ class JobService:
                 job.status = new_status
 
             if "progress" in changed_fields and changes.progress is not None:
-                job.progress = changes.progress
+                job.progress = max(0, min(100, int(changes.progress)))
 
             if "error_message" in changed_fields:
                 job.error_message = changes.error_message
@@ -86,3 +86,93 @@ class JobService:
             session.flush()
             session.expunge(job)
             return job
+
+    def claim_next_queued(self) -> Job | None:
+        """Atomically claim the oldest queued job (CAS on status='queued')."""
+        for _ in range(3):
+            with session_scope(self._session_factory) as session:
+                job_id = session.scalar(
+                    select(Job.id)
+                    .where(Job.status == JobStatus.QUEUED.value)
+                    .order_by(Job.created_at.asc(), Job.id.asc())
+                    .limit(1)
+                )
+                if job_id is None:
+                    return None
+                job = session.get(Job, job_id)
+                if job is None or job.status != JobStatus.QUEUED.value:
+                    continue
+                payload = dict(job.payload or {})
+                attempts = int(payload.get("attempts", 0)) + 1
+                payload["attempts"] = attempts
+
+                # CAS update
+                res = session.execute(
+                    update(Job)
+                    .where(Job.id == job_id, Job.status == JobStatus.QUEUED.value)
+                    .values(
+                        status=JobStatus.DOWNLOADING.value,
+                        progress=10,
+                        payload=payload,
+                        updated_at=utcnow(),
+                    )
+                )
+                if res.rowcount != 1:
+                    continue
+                session.flush()
+                refreshed = session.get(Job, job_id)
+                session.expunge(refreshed)
+                return refreshed
+        return None
+
+    def set_progress(self, job_id: str, progress: int) -> None:
+        with session_scope(self._session_factory) as session:
+            job = session.get(Job, job_id)
+            if job is not None:
+                job.progress = max(0, min(100, int(progress)))
+                job.updated_at = utcnow()
+                session.add(job)
+
+    def mark_failed(self, job_id: str, error_message: str) -> None:
+        with session_scope(self._session_factory) as session:
+            job = session.get(Job, job_id)
+            if job is not None and can_transition(job.status, JobStatus.FAILED.value):
+                job.status = JobStatus.FAILED.value
+                job.error_message = error_message[:4000]
+                job.updated_at = utcnow()
+                session.add(job)
+
+    def complete_acquisition(self, job_id: str, acquisition_payload: dict) -> None:
+        with session_scope(self._session_factory) as session:
+            job = session.get(Job, job_id)
+            if job is not None and can_transition(job.status, JobStatus.TRANSCRIBING.value):
+                job.status = JobStatus.TRANSCRIBING.value
+                job.progress = 100
+                job.payload = {**(job.payload or {}), "acquisition": acquisition_payload}
+                job.updated_at = utcnow()
+                session.add(job)
+
+    def recover_downloading_jobs(self) -> list[str]:
+        """Requeue jobs stuck in 'downloading' from a previous crash/restart."""
+        requeued_ids: list[str] = []
+        with session_scope(self._session_factory) as session:
+            jobs = list(
+                session.scalars(
+                    select(Job).where(Job.status == JobStatus.DOWNLOADING.value)
+                )
+            )
+            for job in jobs:
+                if can_transition(job.status, JobStatus.QUEUED.value):
+                    job.status = JobStatus.QUEUED.value
+                    job.progress = 0
+                    payload = dict(job.payload or {})
+                    payload["recovery"] = {
+                        "reason": "interrupted while downloading",
+                        "requeued_at": utcnow().isoformat(),
+                    }
+                    job.payload = payload
+                    job.updated_at = utcnow()
+                    session.add(job)
+                    requeued_ids.append(job.id)
+            session.flush()
+        return requeued_ids
