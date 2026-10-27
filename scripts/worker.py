@@ -75,7 +75,7 @@ def main() -> None:
         elif args.pipe_command == "run":
             max_jobs = 1 if args.once else args.max_jobs
             poll = args.poll if args.poll is not None else settings.ce_worker_poll_seconds
-            worker.run(max_jobs=max_jobs, poll_seconds=poll)
+            worker.run(max_jobs=max_jobs, poll_seconds=poll, stop_when_idle=args.once)
             sys.exit(0)
 
     provider = build_video_source_provider(settings, storage)
@@ -88,7 +88,7 @@ def main() -> None:
     elif args.command == "run":
         max_jobs = 1 if args.once else args.max_jobs
         poll = args.poll if args.poll is not None else settings.ce_worker_poll_seconds
-        worker.run(max_jobs=max_jobs, poll_seconds=poll)
+        worker.run(max_jobs=max_jobs, poll_seconds=poll, stop_when_idle=args.once)
         sys.exit(0)
 
 

@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
+from itertools import permutations
 from typing import Any
 
 from app.core.errors import ContentEngineError
@@ -74,27 +75,25 @@ class HeuristicClipDetector:
         if not any(bucket):
             raise ClipDetectionFailed("transcript contains no scored speech")
 
-        chosen: list[_ScoredWindow] = []
-        used: list[tuple[float, float]] = []
+        chosen = self._select_windows(bucket, duration)
+        if chosen is None:
+            raise ClipDetectionFailed(
+                "could not find three distinct non-overlapping clips of "
+                f"{self._targets}; source may be too short or too repetitive"
+            )
         labels = ["Hook", "Story", "Payoff"]
 
-        for idx, target in enumerate(self._targets):
-            best = self._best_window(bucket, target, duration, used)
-            if best is None:
-                raise ClipDetectionFailed(
-                    f"could not find a distinct {target}s clip "
-                    f"(clip {idx + 1}/3); source may be too repetitive or short"
-                )
-            chosen.append(best)
-            used.append((best.start, best.end))
-
         result: list[dict[str, Any]] = []
-        for idx, clip in enumerate(sorted(chosen, key=lambda c: c.start)):
+        # Pair each chosen window with the target duration it was actually
+        # selected for BEFORE ordering; pairing after chronological sort
+        # would mislabel spans (e.g. a 30s window reported as the 20s clip).
+        ordered = sorted(zip(self._targets, chosen, strict=True), key=lambda p: p[1].start)
+        for idx, (target, clip) in enumerate(ordered):
             result.append(
                 {
                     "index": idx,
                     "label": labels[idx] if idx < len(labels) else f"Clip {idx + 1}",
-                    "target_duration": self._targets[idx],
+                    "target_duration": target,
                     "start": round(clip.start, 3),
                     "end": round(clip.end, 3),
                     "reason": clip.reason,
@@ -108,10 +107,36 @@ class HeuristicClipDetector:
             clip["index"] = i
         return result
 
+    def _select_windows(self, buckets: list[float], duration: float) -> list[_ScoredWindow] | None:
+        """Pick three non-overlapping windows, one per target duration.
+
+        Tries the largest target first (hardest fit), then every other
+        ordering, because a purely greedy smallest-first pass can strand
+        leftover gaps too small for a later, larger clip. Returns the
+        first complete fit, or None when no ordering fits.
+        """
+        largest_first: tuple[int, ...] = tuple(sorted(self._targets, reverse=True))
+        orders = [largest_first] + [o for o in permutations(self._targets) if o != largest_first]
+        for order in orders:
+            chosen: list[_ScoredWindow] = []
+            used: list[tuple[float, float]] = []
+            for target in order:
+                window = self._best_window(buckets, target, duration, used)
+                if window is None:
+                    break
+                chosen.append(window)
+                used.append((window.start, window.end))
+            else:
+                # Return windows in ascending-target order so callers can
+                # pair them positionally with (sorted) target durations.
+                by_target = dict(zip(order, chosen, strict=True))
+                return [by_target[t] for t in self._targets]
+        return None
+
     @staticmethod
     def _word_buckets(segments: list[dict], duration: float) -> list[float]:
         """Score each 1-second bucket by word density + hook/verb bonuses."""
-        buckets = [0.0] * int(duration) + 1
+        buckets = [0.0] * (int(duration) + 1)
         for seg in segments:
             start = float(seg.get("start", 0))
             end = float(seg.get("end", start))

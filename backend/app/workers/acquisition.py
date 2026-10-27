@@ -97,14 +97,26 @@ class AcquisitionWorker:
         )
         return WorkerOutcome("processed", job.id)
 
-    def run(self, *, max_jobs: int | None = None, poll_seconds: float = 2.0) -> None:
-        """Run continuously or for up to ``max_jobs`` items."""
+    def run(
+        self,
+        *,
+        max_jobs: int | None = None,
+        poll_seconds: float = 2.0,
+        stop_when_idle: bool = False,
+    ) -> None:
+        """Run continuously or for up to ``max_jobs`` items.
+
+        With ``stop_when_idle``, an empty queue ends the loop instead of
+        polling (used by the ``--once`` CLI mode).
+        """
         self.recover_interrupted()
         processed = 0
         try:
             while max_jobs is None or processed < max_jobs:
                 outcome = self.run_once()
                 if outcome.action == "idle":
+                    if stop_when_idle:
+                        break
                     time.sleep(poll_seconds)
                     continue
                 processed += 1

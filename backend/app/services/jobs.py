@@ -92,13 +92,19 @@ class JobService:
         return self._claim_in_status(JobStatus.QUEUED, start_status=JobStatus.DOWNLOADING)
 
     def _claim_in_status(
-        self, status: JobStatus, *, start_status: JobStatus | None = None
+        self,
+        status: JobStatus,
+        *,
+        start_status: JobStatus | None = None,
+        attempts_key: str = "attempts",
     ) -> Job | None:
         """Atomically claim the oldest job in ``status``.
 
         When ``start_status`` is given the job moves to it (acquisition: queued -> downloading).
         When it is None the job keeps its current status (pipeline stages are
         claimed in place so a crash leaves them recoverable in the same stage).
+        ``attempts_key`` selects the payload counter bumped per claim, so
+        acquisition and pipeline attempts are tracked independently.
         """
         target = (start_status or status).value
         for _ in range(3):
@@ -115,8 +121,8 @@ class JobService:
                 if job is None or job.status != status.value:
                     continue
                 payload = dict(job.payload or {})
-                attempts = int(payload.get("attempts", 0)) + 1
-                payload["attempts"] = attempts
+                attempts = int(payload.get(attempts_key, 0)) + 1
+                payload[attempts_key] = attempts
 
                 res = session.execute(
                     update(Job)

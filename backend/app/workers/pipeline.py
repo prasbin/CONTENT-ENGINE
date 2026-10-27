@@ -67,6 +67,15 @@ class PipelineWorker:
         if job is None:
             return PipelineOutcome("idle", None)
 
+        payload = job.payload or {}
+        attempts = int(payload.get("pipeline_attempts", 1))
+        max_attempts = self._settings.ce_max_pipeline_attempts
+        if attempts > max_attempts:
+            msg = f"pipeline attempts exhausted ({attempts} > max {max_attempts})"
+            self._jobs.mark_failed(job.id, msg)
+            logger.error("pipeline job %s failed: %s", job.id, msg)
+            return PipelineOutcome("failed", job.id, msg)
+
         try:
             if job.status == JobStatus.TRANSCRIBING.value:
                 return self._run_from_transcription(job)
@@ -91,7 +100,9 @@ class PipelineWorker:
         stage while the worker runs it, so a crash leaves them recoverable.
         """
         for target in (JobStatus.TRANSCRIBING, JobStatus.RENDERING):
-            job = self._jobs._claim_in_status(target)  # noqa: SLF001 — same-package helper
+            job = self._jobs._claim_in_status(  # noqa: SLF001 — same-package helper
+                target, attempts_key="pipeline_attempts"
+            )
             if job is not None:
                 return job
         return None
@@ -157,13 +168,26 @@ class PipelineWorker:
         job = self._jobs.get(job_id)
         return self._require_asset_ref(job)
 
-    def run(self, *, max_jobs: int | None = None, poll_seconds: float = 2.0) -> None:
+    def run(
+        self,
+        *,
+        max_jobs: int | None = None,
+        poll_seconds: float = 2.0,
+        stop_when_idle: bool = False,
+    ) -> None:
+        """Run continuously or for up to ``max_jobs`` items.
+
+        With ``stop_when_idle``, an empty queue ends the loop instead of
+        polling (used by the ``--once`` CLI mode).
+        """
         self.recover_interrupted()
         processed = 0
         try:
             while max_jobs is None or processed < max_jobs:
                 outcome = self.run_once()
                 if outcome.action == "idle":
+                    if stop_when_idle:
+                        break
                     time.sleep(poll_seconds)
                     continue
                 processed += 1

@@ -156,6 +156,12 @@ class Settings(BaseSettings):
         ge=0.1,
         validation_alias="CE_WORKER_POLL_SECONDS",
     )
+    ce_max_pipeline_attempts: int = Field(
+        default=3,
+        ge=1,
+        le=20,
+        validation_alias="CE_MAX_PIPELINE_ATTEMPTS",
+    )
     ce_temp_cleanup_enabled: bool = Field(
         default=True,
         validation_alias="CE_TEMP_CLEANUP_ENABLED",

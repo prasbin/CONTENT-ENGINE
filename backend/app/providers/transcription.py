@@ -90,6 +90,15 @@ class FasterWhisperProvider:
                 )
             if progress:
                 progress(100)
+        except ValueError as exc:
+            # faster-whisper raises this internal ValueError when the
+            # voice-activity filter removes ALL audio (pure silence).
+            if "iterable argument is empty" in str(exc):
+                raise TranscriptionError(
+                    "no speech detected in the source media "
+                    "(voice-activity filter removed all audio)"
+                ) from exc
+            raise TranscriptionError(f"transcription failed: {exc}") from exc
         except Exception as exc:
             raise TranscriptionError(f"transcription failed: {exc}") from exc
 

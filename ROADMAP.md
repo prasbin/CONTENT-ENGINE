@@ -8,11 +8,11 @@ or user action.
 |------:|-------|--------|-------|
 | 0 | Environment audit, Git safety net, recovery docs | **DONE** | Repo + GitHub remote; `.gitignore`; RECOVERY.md (7-step restore) |
 | 1 | Backend foundation: FastAPI app, config, DB, job model, health, auth, storage, provider interfaces, tests | **DONE** | 83 tests pass; ruff clean; CWD-independent paths; init_db script; live server verified |
-| 2 | Video acquisition: URL validation, download, source verification, source metadata | NOT STARTED | Needs FFmpeg installed (absent now) + `VideoSourceProvider` impl |
-| 3 | Transcription: speech-to-text, timestamped segments, persisted transcript | NOT STARTED | Needs a working STT backend (Whisper-class); `TranscriptionProvider` impl |
-| 4 | AI clip detection: strong moments (motivation, mindset, gym, podcasts, informative) | NOT STARTED | Needs Ollama or other inference (not installed); `ClipDetectionProvider` impl |
-| 5 | Short rendering: vertical 9:16, 1080×1920, H.264/AAC, safe framing | NOT STARTED | Needs FFmpeg; `Renderer` impl |
-| 6 | Captions: burned-in, timestamp-aligned, mobile-readable, safe margins | NOT STARTED | Needs FFmpeg; `CaptionProvider` impl |
+| 2 | Video acquisition: URL validation, download, source verification, source metadata | **DONE** | yt-dlp Python API; size/timeout caps; DB worker + crash recovery (`d2aab2f`) |
+| 3 | Transcription: speech-to-text, timestamped segments, persisted transcript | **DONE** | faster-whisper (free/offline/CPU int8, VAD); REAL-verified: SAPI speech → transcript via pipeline worker |
+| 4 | AI clip detection: strong moments (motivation, mindset, gym, podcasts, informative) | **DONE** | Heuristic scorer (density + hooks + backtracking exact-window fit); REAL-verified: 3 exact non-overlapping 20/30/35s clips from real transcript; honest refusal when source too short |
+| 5 | Short rendering: vertical 9:16, 1080×1920, H.264/AAC, safe framing | **BLOCKED** | Implemented (`FFmpegRenderer`, honest `RendererUnavailable`); **FFmpeg not installed on this machine** — render integration test skips until it is |
+| 6 | Captions: burned-in, timestamp-aligned, mobile-readable, safe margins | **BLOCKED** | Implemented (ASS burn-in via renderer); verification blocked by the same missing FFmpeg |
 | 7 | Metadata + human review: title/description/hashtags, editable, approve/reject gate | NOT STARTED | Approval gate is mandatory before any publishing |
 | 8 | Publishing abstractions: `Publisher` contract, credential storage | NOT STARTED | Official APIs only |
 | 9 | YouTube Shorts publishing | NOT STARTED | Requires Google OAuth + YouTube Data API verification (user action) |
